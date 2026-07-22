@@ -6,26 +6,28 @@
 <title>Yggdrasil — 世界树认知引擎</title>
 <style>
 :root {
-  --bg: #0d1117;
-  --panel: #161b22;
-  --border: #30363d;
-  --text: #c9d1d9;
-  --muted: #8b949e;
-  --accent: #58a6ff;
-  --success: #3fb950;
-  --warning: #d2991d;
-  --danger: #f85149;
-  --spring: #ff7b72;
-  --summer: #3fb950;
-  --autumn: #d2991d;
-  --winter: #79c0ff;
-  --capacity: #58a6ff;
-  --schema: #3fb950;
-  --heuristic: #d2991d;
-  --case: #bc8cff;
-  --fact: #8b949e;
-  --state: #39d2c0;
+  --bg: #f6f8fa;
+  --panel: #ffffff;
+  --border: #d0d7de;
+  --text: #1f2328;
+  --muted: #656d76;
+  --accent: #0969da;
+  --success: #1a7f37;
+  --warning: #9a6700;
+  --danger: #cf222e;
+  --spring: #cf222e;
+  --summer: #1a7f37;
+  --autumn: #9a6700;
+  --winter: #0969da;
+  --capacity: #0969da;
+  --schema: #1a7f37;
+  --heuristic: #9a6700;
+  --case: #8250df;
+  --fact: #656d76;
+  --state: #0550ae;
   --radius: 8px;
+  --hover: #f3f4f6;
+  --active-bg: #ddf4ff;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -50,9 +52,9 @@ header h1 span { font-size: 22px; }
   background: var(--panel); color: var(--text); cursor: pointer; font-size: 13px;
   transition: background .15s; white-space: nowrap;
 }
-.btn:hover { background: #21262d; }
-.btn-accent { background: #1f6feb; border-color: #1f6feb; color: #fff; }
-.btn-accent:hover { background: #388bfd; }
+.btn:hover { background: var(--hover); }
+.btn-accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-accent:hover { background: #0550ae; }
 .btn-sm { padding: 3px 8px; font-size: 12px; }
 main { display: flex; flex: 1; overflow: hidden; }
 .panel {
@@ -62,8 +64,8 @@ main { display: flex; flex: 1; overflow: hidden; }
 .sidebar h3 { font-size: 13px; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; letter-spacing: .5px; }
 .domain-tree { list-style: none; }
 .domain-tree li { padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px; }
-.domain-tree li:hover { background: #21262d; }
-.domain-tree li.active { background: #1f6feb33; color: var(--accent); }
+.domain-tree li:hover { background: var(--hover); }
+.domain-tree li.active { background: var(--active-bg); color: var(--accent); }
 .domain-tree li .season-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .domain-tree li .count { margin-left: auto; font-size: 11px; color: var(--muted); }
 .content { flex: 1; padding: 16px; overflow-y: auto; }
@@ -81,15 +83,15 @@ main { display: flex; flex: 1; overflow: hidden; }
   font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: 500;
   text-transform: uppercase; letter-spacing: .3px; flex-shrink: 0;
 }
-.role-capacity { background: #58a6ff22; color: var(--capacity); }
-.role-schema { background: #3fb95022; color: var(--schema); }
-.role-heuristic { background: #d2991d22; color: var(--heuristic); }
-.role-case { background: #bc8cff22; color: var(--case); }
-.role-fact { background: #8b949e22; color: var(--fact); }
-.role-state { background: #39d2c022; color: var(--state); }
+.role-capacity { background: #ddf4ff; color: var(--capacity); }
+.role-schema { background: #dafbe1; color: var(--schema); }
+.role-heuristic { background: #fff8c5; color: var(--heuristic); }
+.role-case { background: #fbefff; color: var(--case); }
+.role-fact { background: #f3f4f6; color: var(--fact); }
+.role-state { background: #ddf4ff; color: var(--state); }
 .node-meta { display: flex; gap: 12px; font-size: 12px; color: var(--muted); margin-top: 8px; }
 .meta-item { display: flex; align-items: center; gap: 4px; }
-.bar { height: 4px; background: #21262d; border-radius: 2px; margin-top: 4px; overflow: hidden; }
+.bar { height: 4px; background: #e8eaed; border-radius: 2px; margin-top: 4px; overflow: hidden; }
 .bar-inner { height: 100%; border-radius: 2px; transition: width .3s; }
 .empty-state { text-align: center; color: var(--muted); padding: 60px 20px; }
 .empty-state p { margin: 8px 0; font-size: 14px; }
@@ -110,10 +112,10 @@ main { display: flex; flex: 1; overflow: hidden; }
   padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--radius);
   background: transparent; color: var(--muted); cursor: pointer; font-size: 13px;
 }
-.tab.active { background: #1f6feb33; color: var(--accent); border-color: var(--accent); }
+.tab.active { background: var(--active-bg); color: var(--accent); border-color: var(--accent); }
 .node-preview { font-size: 12px; color: var(--muted); max-height: 60px; overflow: hidden; line-height: 1.4; }
 .modal {
-  display: none; position: fixed; inset: 0; background: #0d1117cc; z-index: 100;
+  display: none; position: fixed; inset: 0; background: #00000044; z-index: 100;
   align-items: center; justify-content: center;
 }
 .modal.open { display: flex; }
