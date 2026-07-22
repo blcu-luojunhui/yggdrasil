@@ -1,4 +1,4 @@
-from quart import Response
+from quart import Blueprint, Response
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 metrics_bp = Blueprint("metrics", __name__, url_prefix="/api/v1")

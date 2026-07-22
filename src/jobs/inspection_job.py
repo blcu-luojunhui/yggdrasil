@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from src.core.config import YggdrasilConfig
 from src.core.yggdrasil.models import Season
 from src.core.yggdrasil.store import YggdrasilStore
-from src.jobs import SeasonManager
+from src.jobs.season_manager import SeasonManager
 from src.infra.observability import LogService, AlertService, MetricsCollector
 
 logger = logging.getLogger(__name__)

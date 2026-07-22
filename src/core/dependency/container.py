@@ -11,7 +11,8 @@ from src.core.yggdrasil import (
 from src.infra.database.duckdb import DuckDBPool
 from src.infra.observability import LogService, AlertService, MetricsCollector
 from src.infra.shared import HttpClient
-from src.jobs import InspectionJob, SeasonManager
+from src.jobs.inspection_job import InspectionJob
+from src.jobs.season_manager import SeasonManager
 
 
 class ServerContainer(containers.DeclarativeContainer):
