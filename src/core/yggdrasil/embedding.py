@@ -7,7 +7,7 @@ import numpy as np
 from chromadb.config import Settings
 
 from src.core.config import YggdrasilConfig
-from src.core.yggdrasil.models import CognitiveNode, CognitiveRole
+from src.core.yggdrasil.models import CognitiveNode, CognitiveRole, Season
 
 logger = logging.getLogger(__name__)
 
@@ -24,20 +24,16 @@ class EmbeddingService:
         self._initialized = False
 
     async def initialize(self):
-        """初始化 ChromaDB 客户端和集合"""
         os.makedirs(self.config.chroma_path, exist_ok=True)
 
         self._client = chromadb.PersistentClient(
             path=self.config.chroma_path,
             settings=Settings(anonymized_telemetry=False),
         )
-
-        # 获取或创建集合
         self._collection = self._client.get_or_create_collection(
             name=self.COLLECTION_NAME,
             metadata={"hnsw:space": "cosine"},
         )
-
         self._initialized = True
         logger.info(f"ChromaDB initialized: {self.config.chroma_path}")
 
@@ -47,29 +43,25 @@ class EmbeddingService:
             raise RuntimeError("ChromaDB not initialized, call initialize() first")
         return self._collection
 
+    # ── Embedding ──
+
     async def embed_text(self, text: str) -> np.ndarray:
-        """生成单个文本嵌入"""
         embeddings = await self.embed_texts([text])
         return embeddings[0]
 
     async def embed_texts(self, texts: List[str]) -> List[np.ndarray]:
-        """批量生成文本嵌入"""
         if self.config.llm_api_key:
             return await self._call_openai_embedding(texts)
-        # 没有 API key 时，用 Chroma 内置 embedding function
         return [np.random.randn(self.config.llm_embedding_dim).astype(np.float32) for _ in texts]
 
     async def _call_openai_embedding(self, texts: List[str]) -> List[np.ndarray]:
-        """调用 OpenAI 兼容接口生成嵌入"""
         import aiohttp
-
         url = f"{self.config.llm_base_url}/embeddings"
         headers = {
             "Authorization": f"Bearer {self.config.llm_api_key}",
             "Content-Type": "application/json",
         }
         payload = {"model": self.config.llm_model, "input": texts}
-
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload, headers=headers) as resp:
                 result = await resp.json()
@@ -80,43 +72,40 @@ class EmbeddingService:
                     embeddings.append(np.array(item["embedding"], dtype=np.float32))
                 return embeddings
 
-    # ── ChromaDB CRUD ──
+    # ── Chroma CRUD ──
 
-    async def upsert_node(self, node: CognitiveNode):
-        """插入或更新节点到 ChromaDB"""
-        text = f"{node.node_name}\n{node.description or ''}\n{node.content or ''}"
-        metadata = {
-            "node_id": str(node.id),
+    def _node_metadata(self, node: CognitiveNode) -> dict:
+        return {
+            "node_id": node.id or "",
             "domain_id": str(node.domain_id),
+            "domain_path": node.domain_path,
             "role": node.role.value,
-            "node_name": node.node_name,
-            "description": node.description or "",
+            "title": node.title,
             "strength": str(node.strength),
             "health": str(node.health),
-            "is_isolated": str(node.is_isolated),
-            "last_used_at": node.last_used_at.isoformat() if node.last_used_at else "",
+            "season": node.season.value,
+            "tenant_id": node.tenant_id,
+            "embedding_id": node.embedding_id or "",
         }
 
+    def _node_document(self, node: CognitiveNode) -> str:
+        return f"{node.title}\n{node.content or ''}"
+
+    async def upsert_node(self, node: CognitiveNode):
         self.collection.upsert(
-            ids=[str(node.id)],
-            documents=[text],
-            metadatas=[metadata],
+            ids=[node.id],
+            documents=[self._node_document(node)],
+            metadatas=[self._node_metadata(node)],
         )
 
     async def delete_node(self, node_id: str):
-        """从 ChromaDB 删除节点"""
         self.collection.delete(ids=[node_id])
 
     async def get_node(self, node_id: str) -> Optional[CognitiveNode]:
-        """从 ChromaDB 获取节点"""
         result = self.collection.get(ids=[node_id], include=["metadatas", "documents"])
         if not result["ids"]:
             return None
-        return self._result_to_node(
-            result["ids"][0],
-            result["metadatas"][0],
-            result["documents"][0],
-        )
+        return self._result_to_node(result["ids"][0], result["metadatas"][0], result["documents"][0])
 
     async def search(
         self,
@@ -124,17 +113,12 @@ class EmbeddingService:
         n_results: int = 10,
         where: Optional[Dict] = None,
     ) -> List[tuple[CognitiveNode, float]]:
-        """
-        用文本查询搜索最相似的节点
-        返回 [(node, distance), ...]
-        """
         result = self.collection.query(
             query_texts=[query_text],
             n_results=n_results,
             where=where,
             include=["metadatas", "documents", "distances"],
         )
-
         if not result["ids"] or not result["ids"][0]:
             return []
 
@@ -143,43 +127,29 @@ class EmbeddingService:
             metadata = result["metadatas"][0][i]
             document = result["documents"][0][i]
             distance = result["distances"][0][i] if result.get("distances") else 0.0
-            node = self._result_to_node(node_id, metadata, document)
-            nodes.append((node, distance))
-
+            nodes.append((self._result_to_node(node_id, metadata, document), distance))
         return nodes
 
-    async def list_nodes(
-        self, domain_id: Optional[int] = None, include_isolated: bool = False
-    ) -> List[CognitiveNode]:
-        """列出节点，可按领域过滤"""
-        where = {}
+    async def list_nodes(self, domain_id: Optional[int] = None, min_health: float = 0.0) -> List[CognitiveNode]:
+        where = {"health": {"$gt": str(min_health)}}
         if domain_id is not None:
             where["domain_id"] = str(domain_id)
-        if not include_isolated:
-            where["is_isolated"] = "False"
 
-        result = self.collection.get(
-            where=where if where else None,
-            include=["metadatas", "documents"],
-        )
-
+        result = self.collection.get(where=where, include=["metadatas", "documents"])
         if not result["ids"]:
             return []
-
         return [
             self._result_to_node(result["ids"][i], result["metadatas"][i], result["documents"][i])
             for i in range(len(result["ids"]))
         ]
 
     async def update_metadata(self, node_id: str, metadata: Dict):
-        """更新节点元数据"""
         self.collection.update(ids=[node_id], metadatas=[metadata])
 
     async def count_nodes(self) -> int:
         return self.collection.count()
 
     async def count_nodes_by_role(self) -> Dict[CognitiveRole, int]:
-        """按 role 统计节点数"""
         result = self.collection.get(include=["metadatas"])
         counts: Dict[str, int] = {}
         for meta in (result["metadatas"] or []):
@@ -190,16 +160,17 @@ class EmbeddingService:
     @staticmethod
     def _result_to_node(node_id: str, metadata: dict, document: str) -> CognitiveNode:
         return CognitiveNode(
-            id=int(node_id) if node_id.isdigit() else hash(node_id),
-            domain_id=int(metadata.get("domain_id", 0)),
+            id=node_id,
             role=CognitiveRole(metadata.get("role", "fact")),
-            node_name=metadata.get("node_name", ""),
-            description=metadata.get("description") or None,
+            domain_id=int(metadata.get("domain_id", 0)),
+            domain_path=metadata.get("domain_path", ""),
+            title=metadata.get("title", ""),
             content=document,
             strength=float(metadata.get("strength", 0.5)),
             health=float(metadata.get("health", 1.0)),
-            is_isolated=metadata.get("is_isolated", "False") == "True",
-            last_used_at=metadata.get("last_used_at") or None,
+            season=Season(metadata.get("season", "spring")),
+            embedding_id=metadata.get("embedding_id") or None,
+            tenant_id=metadata.get("tenant_id", "default"),
         )
 
 

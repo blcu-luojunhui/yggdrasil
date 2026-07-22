@@ -9,45 +9,41 @@ logger = logging.getLogger(__name__)
 
 
 class SeasonManager:
-    """季节管理器 - 管理各领域的季节转换"""
+    """季节管理器 - 管理子树级别的季节周期"""
+
+    SEASON_ORDER = [Season.SPRING, Season.SUMMER, Season.AUTUMN, Season.WINTER]
 
     def __init__(self, store: YggdrasilStore, config: YggdrasilConfig):
         self.store = store
         self.config = config
 
-    async def get_domain_season(self, domain_id: int) -> Season:
-        """获取领域当前季节"""
-        domain = await self.store.get_domain(domain_id)
-        if not domain:
-            return Season.SPRING
-        return domain.season
+    async def get_season(self, domain_path: str = "/") -> Season:
+        cycle = await self.store.get_season_cycle(domain_path)
+        if cycle:
+            return Season(cycle["current_season"])
+        return Season.SPRING
 
-    async def set_season(self, domain_id: int, season: Season) -> None:
-        """设置领域季节"""
-        await self.store.update_domain_season(domain_id, season)
-        logger.info(f"Domain {domain_id} changed season to {season.value}")
+    async def set_season(self, domain_path: str, season: Season) -> None:
+        await self.store.upsert_season_cycle(domain_path, season)
+
+    async def next_season(self, domain_path: str = "/") -> Season:
+        current = await self.get_season(domain_path)
+        idx = self.SEASON_ORDER.index(current)
+        next_idx = (idx + 1) % len(self.SEASON_ORDER)
+        next_season = self.SEASON_ORDER[next_idx]
+        await self.set_season(domain_path, next_season)
+        logger.info(f"Domain {domain_path} season: {current.value} → {next_season.value}")
+        return next_season
 
     async def list_all_domains(self) -> List[Domain]:
-        """列出所有领域"""
         return await self._collect_domains(None)
 
     async def _collect_domains(self, parent_id: int | None) -> List[Domain]:
-        """递归收集所有领域"""
         children = await self.store.list_child_domains(parent_id)
         result = list(children)
         for child in children:
             result.extend(await self._collect_domains(child.id))
         return result
-
-    async def next_season(self, domain_id: int) -> Season:
-        """轮转季节：春 → 夏 → 秋 → 冬 → 春"""
-        current = await self.get_domain_season(domain_id)
-        order = [Season.SPRING, Season.SUMMER, Season.AUTUMN, Season.WINTER]
-        idx = order.index(current) if current in order else 0
-        next_idx = (idx + 1) % len(order)
-        next_season = order[next_idx]
-        await self.set_season(domain_id, next_season)
-        return next_season
 
 
 __all__ = ["SeasonManager"]

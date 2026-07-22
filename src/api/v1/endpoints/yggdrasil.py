@@ -17,60 +17,58 @@ class RetrieveRequest(BaseModel):
 class CreateNodeRequest(BaseModel):
     domain_path: str
     role: str
-    node_name: str
+    title: str
     content: str | None = None
-    description: str | None = None
 
 
 class CreateEdgeRequest(BaseModel):
-    from_node: str
-    to_node: str
-    relation_type: str
+    source_id: str
+    target_id: str
+    relation: str
     strength: float = Field(default=0.5, ge=0, le=1)
-    source: str | None = None
+    source_origin: str | None = None
 
 
 class FeedbackRequest(BaseModel):
     node_id: str | None = None
-    edge_id: int | None = None
+    edge_id: str | None = None
     success: bool
     step: float = Field(default=0.1, ge=0, le=1)
 
 
 @yggdrasil_bp.route("/retrieve", methods=["POST"])
 async def retrieve(engine: YggdrasilEngine):
-    """检索认知子树"""
-    start_time = time.time()
     data = await request.get_json()
     req = RetrieveRequest(**data)
 
     try:
         context = await engine.retrieve(req.query, req.domain_path, req.max_nodes)
         return jsonify(ApiResponse.success({
-            "domain": {
-                "id": context.domain.id,
-                "full_path": context.domain.full_path,
-                "season": context.domain.season.value,
-            },
+            "domain": (
+                {"id": context.domain.id, "full_path": context.domain.full_path}
+                if context.domain else None
+            ),
             "nodes": [
                 {
                     "id": n.id,
                     "role": n.role.value,
-                    "name": n.node_name,
-                    "description": n.description,
+                    "domain_path": n.domain_path,
+                    "title": n.title,
                     "content": n.content,
                     "strength": n.strength,
                     "health": n.health,
+                    "season": n.season.value,
                 }
                 for n in context.nodes
             ],
             "edges": [
                 {
                     "id": e.id,
-                    "from_node": e.from_node_id,
-                    "to_node": e.to_node_id,
-                    "relation_type": e.relation_type.value,
+                    "source_id": e.source_id,
+                    "target_id": e.target_id,
+                    "relation": e.relation.value,
                     "strength": e.strength,
+                    "evidence_count": e.evidence_count,
                 }
                 for e in context.edges
             ],
@@ -86,7 +84,6 @@ async def retrieve(engine: YggdrasilEngine):
 
 @yggdrasil_bp.route("/retrieve/markdown", methods=["POST"])
 async def retrieve_markdown(engine: YggdrasilEngine):
-    """检索并直接返回 Markdown"""
     data = await request.get_json()
     req = RetrieveRequest(**data)
     markdown = await engine.get_markdown_context(req.query, req.domain_path)
@@ -110,17 +107,17 @@ async def create_node(engine: YggdrasilEngine):
         node = await engine.create_node(
             domain_path=req.domain_path,
             role=role,
-            node_name=req.node_name,
+            title=req.title,
             content=req.content,
-            description=req.description,
         )
         return jsonify(ApiResponse.success({
             "id": node.id,
-            "domain_id": node.domain_id,
             "role": node.role.value,
-            "node_name": node.node_name,
+            "domain_path": node.domain_path,
+            "title": node.title,
             "strength": node.strength,
             "health": node.health,
+            "season": node.season.value,
         })), 200
     except Exception as e:
         return jsonify(ApiResponse.error(
@@ -134,20 +131,20 @@ async def create_edge(engine: YggdrasilEngine):
     req = CreateEdgeRequest(**data)
 
     try:
-        relation_type = RelationType(req.relation_type)
+        relation = RelationType(req.relation)
     except ValueError:
         return jsonify(ApiResponse.error(
             ErrorCodes.VALIDATION_ERROR,
-            f"Invalid relation_type: {req.relation_type}",
+            f"Invalid relation: {req.relation}, must be one of {[r.value for r in RelationType]}",
         )), 400
 
     try:
         edge_id = await engine.add_edge(
-            from_node=req.from_node,
-            to_node=req.to_node,
-            relation_type=relation_type,
+            source_id=req.source_id,
+            target_id=req.target_id,
+            relation=relation,
             strength=req.strength,
-            source=req.source,
+            source_origin=req.source_origin,
         )
         return jsonify(ApiResponse.success({"id": edge_id})), 200
     except Exception as e:
@@ -182,7 +179,6 @@ async def create_domain(engine: YggdrasilEngine):
     data = await request.get_json()
     domain_name = data.get("domain_name")
     parent_path = data.get("parent_path")
-
     if not domain_name:
         return jsonify(ApiResponse.error(
             ErrorCodes.VALIDATION_ERROR, "domain_name is required",
@@ -196,7 +192,6 @@ async def create_domain(engine: YggdrasilEngine):
             "domain_name": domain.domain_name,
             "full_path": domain.full_path,
             "depth": domain.depth,
-            "season": domain.season.value,
         })), 200
     except Exception as e:
         return jsonify(ApiResponse.error(
@@ -217,9 +212,11 @@ async def list_nodes(engine: YggdrasilEngine):
         {
             "id": n.id,
             "role": n.role.value,
-            "node_name": n.node_name,
+            "domain_path": n.domain_path,
+            "title": n.title,
             "strength": n.strength,
             "health": n.health,
+            "season": n.season.value,
         }
         for n in nodes
     ])), 200
@@ -235,15 +232,16 @@ async def get_node(node_id: str, engine: YggdrasilEngine):
 
     return jsonify(ApiResponse.success({
         "id": node.id,
-        "domain_id": node.domain_id,
         "role": node.role.value,
-        "node_name": node.node_name,
-        "description": node.description,
+        "domain_id": node.domain_id,
+        "domain_path": node.domain_path,
+        "title": node.title,
         "content": node.content,
         "strength": node.strength,
         "health": node.health,
-        "is_isolated": node.is_isolated,
-        "last_used_at": node.last_used_at.isoformat() if node.last_used_at else None,
+        "season": node.season.value,
+        "tenant_id": node.tenant_id,
+        "last_accessed_at": node.last_accessed_at.isoformat() if node.last_accessed_at else None,
         "created_at": node.created_at.isoformat() if node.created_at else None,
     })), 200
 

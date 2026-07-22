@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class InspectionJob:
-    """后台巡检任务 - 健康检查、冗余清理、季节转换、冬季衰减"""
+    """后台巡检任务 - 健康检查、季节轮转、冬季衰减、秋季归纳"""
 
     def __init__(
         self,
@@ -57,10 +57,6 @@ class InspectionJob:
                 self.metrics.increment_inspection()
             except Exception as e:
                 logger.error(f"Inspection failed: {e}", exc_info=True)
-                await self.alert_service.send_alert(
-                    "Yggdrasil Inspection Failed",
-                    {"error": str(e)},
-                )
             try:
                 await asyncio.sleep(24 * 3600)
             except asyncio.CancelledError:
@@ -70,48 +66,73 @@ class InspectionJob:
         logger.info("Starting Yggdrasil inspection...")
         self.metrics.increment_inspection()
 
+        total_pruned = 0
         domains = await self.season_manager.list_all_domains()
         logger.info(f"Inspecting {len(domains)} domains")
 
-        total_pruned = 0
-        total_merged = 0
-
         for domain in domains:
-            pruned, merged = await self.inspect_domain(domain)
+            pruned = await self._inspect_domain(domain)
             total_pruned += pruned
-            total_merged += merged
 
+        await self._apply_winter_decay()
         self.metrics.increment_nodes_pruned(total_pruned)
-        self.metrics.increment_nodes_merged(total_merged)
 
-        await self.apply_winter_decay()
-
-        logger.info(f"Inspection complete: pruned {total_pruned}, merged {total_merged}")
+        logger.info(f"Inspection complete: pruned {total_pruned} nodes")
 
         await self.log_service.log({
             "event": "yggdrasil_inspection",
             "domains_inspected": len(domains),
             "nodes_pruned": total_pruned,
-            "nodes_merged": total_merged,
         })
 
-    async def inspect_domain(self, domain) -> tuple[int, int]:
+    async def _inspect_domain(self, domain) -> int:
         pruned = 0
-        merged = 0
+        season = await self.season_manager.get_season(domain.full_path)
 
-        if domain.season == Season.AUTUMN:
+        if season == Season.AUTUMN:
             # 秋收：标记低强度节点
-            pass
+            nodes = await self.store.list_nodes(domain_id=domain.id, min_health=0.0)
+            for node in nodes:
+                if node.strength < self.config.retrieval_strength_threshold:
+                    await self.store.update_node_strength(node.id, node.strength * 0.9)
+                    pruned += 1
 
-        return pruned, merged
+        return pruned
 
-    async def apply_winter_decay(self):
+    async def _apply_winter_decay(self):
+        """冬季衰减：长时间未使用的节点降低强度"""
         decay_factor = self.config.evolution_decay_factor
-        logger.info(f"Winter decay applied (factor={decay_factor})")
+        cutoff = datetime.now() - timedelta(days=30)
+
+        rows = await self.store.db.async_fetch(
+            """SELECT id, strength FROM cog_node
+               WHERE strength > 0.1 AND health > 0
+               AND (last_accessed_at IS NULL OR last_accessed_at < ?)""",
+            (cutoff,),
+        )
+        decayed = 0
+        for row in rows:
+            new_strength = max(0.1, row["strength"] * decay_factor)
+            await self.store.update_node_strength(row["id"], new_strength)
+            decayed += 1
+
+        logger.info(f"Winter decay applied to {decayed} nodes")
 
     async def check_pollution(self, domain_id: int) -> tuple[bool, int]:
-        # 检查污染程度
-        return False, 0
+        """检查污染程度"""
+        nodes = await self.store.list_nodes(domain_id=domain_id, min_health=0.0)
+        if not nodes:
+            return False, 0
+
+        unhealthy = sum(1 for n in nodes if n.health < 0.5)
+        ratio = unhealthy / len(nodes)
+
+        if ratio > self.config.evolution_pollution_threshold:
+            self.metrics.increment_pollution_detected()
+            logger.warning(f"Pollution detected in domain {domain_id}: {unhealthy}/{len(nodes)} ({ratio:.1%})")
+            return True, unhealthy
+
+        return False, unhealthy
 
 
 __all__ = ["InspectionJob"]

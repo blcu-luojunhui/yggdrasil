@@ -10,9 +10,9 @@ from src.core.yggdrasil.models import (
     CognitiveRole,
     RelationType,
     SubtreeContext,
-    ChangeLogEntry,
+    TreeLogEntry,
 )
-from src.core.yggdrasil.store import YggdrasilStore
+from src.core.yggdrasil.store import YggdrasilStore, _uuid_v7
 from src.core.yggdrasil.retriever import SubtreeRetriever
 from src.core.yggdrasil.embedding import EmbeddingService
 from src.infra.observability import MetricsCollector
@@ -35,22 +35,23 @@ class YggdrasilEngine:
         self.embedding = embedding
         self.metrics = metrics
 
+    # ── Retrieve ──
+
     async def retrieve(
         self, query: str, domain_path: Optional[str] = None, max_nodes: Optional[int] = None
     ) -> SubtreeContext:
-        """检索认知子树"""
         self.metrics.increment_retrieval()
         context = await self.retriever.retrieve(query, domain_path, max_nodes)
         self.metrics.observe_retrieval_nodes(len(context.nodes))
         return context
 
     async def get_markdown_context(self, query: str, domain_path: Optional[str] = None) -> str:
-        """获取 Markdown 格式认知上下文，直接注入 prompt"""
         context = await self.retrieve(query, domain_path)
         return context.to_markdown()
 
+    # ── Domain ──
+
     async def create_domain(self, domain_name: str, parent_path: Optional[str] = None) -> Domain:
-        """创建新领域"""
         if parent_path is None:
             root = await self.store.get_domain_by_path("")
             if not root:
@@ -74,82 +75,87 @@ class YggdrasilEngine:
         domain.id = await self.store.create_domain(domain)
         return domain
 
+    # ── Node ──
+
     async def create_node(
         self,
         domain_path: str,
         role: CognitiveRole,
-        node_name: str,
+        title: str,
         content: Optional[str] = None,
-        description: Optional[str] = None,
     ) -> CognitiveNode:
-        """创建新认知节点，写入 ChromaDB"""
         domain = await self.store.get_domain_by_path(domain_path)
         if not domain:
             raise ValueError(f"Domain {domain_path} not found")
 
-        # 生成唯一 ID（使用时间戳 + name hash）
-        node_id = int(datetime.now().timestamp() * 1000000) + hash(node_name) % 1000000
-
         node = CognitiveNode(
-            id=node_id,
-            domain_id=domain.id,
+            id=_uuid_v7(),
             role=role,
-            node_name=node_name,
-            description=description,
+            domain_id=domain.id,
+            domain_path=domain_path,
+            title=title,
             content=content,
         )
+        node.id = await self.store.create_node(node)
         await self.embedding.upsert_node(node)
         self.metrics.increment_node_created(role.value)
-
         return node
+
+    async def get_node(self, node_id: str) -> Optional[CognitiveNode]:
+        return await self.store.get_node(node_id)
+
+    async def list_nodes(self, domain_path: str) -> List[CognitiveNode]:
+        domain = await self.store.get_domain_by_path(domain_path)
+        if not domain:
+            return []
+        return await self.store.list_nodes(domain_id=domain.id, min_health=0.0)
+
+    # ── Edge ──
 
     async def add_edge(
         self,
-        from_node: str,
-        to_node: str,
-        relation_type: RelationType,
+        source_id: str,
+        target_id: str,
+        relation: RelationType,
         strength: float = 0.5,
-        source: Optional[str] = None,
-    ) -> int:
-        """添加或更新边"""
+        source_origin: Optional[str] = None,
+    ) -> str:
         edge = CognitiveEdge(
-            from_node_id=from_node,
-            to_node_id=to_node,
-            relation_type=relation_type,
+            source_id=source_id,
+            target_id=target_id,
+            relation=relation,
             strength=strength,
-            source=source,
+            source_origin=source_origin,
         )
         edge.id = await self.store.create_edge(edge)
-        self.metrics.increment_edge_updated(relation_type.value)
+        self.metrics.increment_edge_updated(relation.value)
         return edge.id
+
+    # ── Feedback ──
 
     async def feedback(
         self,
         node_id: Optional[str] = None,
-        edge_id: Optional[int] = None,
+        edge_id: Optional[str] = None,
         success: bool = True,
         step: float = 0.1,
         trace_id: Optional[str] = None,
     ) -> None:
-        """执行后反馈：成功 strengthen，失败 weaken"""
         if node_id:
-            node = await self.embedding.get_node(str(node_id))
+            node = await self.store.get_node(node_id)
             if node:
                 delta = step if success else -step
                 new_strength = max(0.0, min(1.0, node.strength + delta))
-                node.strength = new_strength
-                node.last_used_at = datetime.now()
-                await self.embedding.upsert_node(node)
+                await self.store.update_node_strength(node_id, new_strength)
+                await self.store.touch_node(node_id)
 
-                if trace_id:
-                    await self.store.log_change(ChangeLogEntry(
-                        node_id=str(node_id),
-                        operation="update_strength",
-                        old_values={"strength": node.strength - delta},
-                        new_values={"strength": new_strength},
-                        reason="feedback" + (" success" if success else " failure"),
-                        trace_id=trace_id,
-                    ))
+                await self.store.log_change(TreeLogEntry(
+                    operation="update_node",
+                    entity_type="node",
+                    entity_id=node_id,
+                    changes={"strength": {"old": node.strength, "new": new_strength}},
+                    operator=trace_id,
+                ))
 
         if edge_id:
             edge = await self.store.get_edge(edge_id)
@@ -157,37 +163,30 @@ class YggdrasilEngine:
                 delta = step if success else -step
                 new_strength = max(0.0, min(1.0, edge.strength + delta))
                 await self.store.update_edge_strength(edge_id, new_strength)
+                if success:
+                    await self.store.activate_edge(edge_id)
 
-                if trace_id:
-                    await self.store.log_change(ChangeLogEntry(
-                        edge_id=edge_id,
-                        operation="update_strength",
-                        old_values={"strength": edge.strength},
-                        new_values={"strength": new_strength},
-                        reason="feedback" + (" success" if success else " failure"),
-                        trace_id=trace_id,
-                    ))
+                await self.store.log_change(TreeLogEntry(
+                    operation="update_edge",
+                    entity_type="edge",
+                    entity_id=edge_id,
+                    changes={"strength": {"old": edge.strength, "new": new_strength}},
+                    operator=trace_id,
+                ))
 
     async def strengthen(
-        self, from_node: str, to_node: str, relation_type: RelationType,
-        step: float = 0.1, source: str = "execution", trace_id: Optional[str] = None,
+        self, source_id: str, target_id: str, relation: RelationType,
+        step: float = 0.1, source_origin: str = "execution", trace_id: Optional[str] = None,
     ) -> None:
-        """强化关联"""
-        edge = await self.store.get_edge_between(from_node, to_node, relation_type)
+        edge = await self.store.get_edge_between(source_id, target_id, relation)
         if edge:
             new_strength = min(1.0, edge.strength + step)
             await self.store.update_edge_strength(edge.id, new_strength)
+            await self.store.activate_edge(edge.id)
         else:
-            await self.add_edge(from_node, to_node, relation_type, strength=0.5 + step, source=source)
+            await self.add_edge(source_id, target_id, relation, strength=0.5 + step, source_origin=source_origin)
 
-    async def get_node(self, node_id: str) -> Optional[CognitiveNode]:
-        return await self.embedding.get_node(str(node_id))
-
-    async def list_nodes(self, domain_path: str) -> List[CognitiveNode]:
-        domain = await self.store.get_domain_by_path(domain_path)
-        if not domain:
-            return []
-        return await self.embedding.list_nodes(domain_id=domain.id, include_isolated=False)
+    # ── Lifecycle ──
 
     async def ensure_skeleton(self) -> None:
         await self.store.ensure_skeleton()
