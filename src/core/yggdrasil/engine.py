@@ -11,29 +11,73 @@ from src.core.yggdrasil.models import (
     RelationType,
     SubtreeContext,
     TreeLogEntry,
+    Branch,
 )
 from src.core.yggdrasil.store import YggdrasilStore, _uuid_v7
 from src.core.yggdrasil.retriever import SubtreeRetriever
 from src.core.yggdrasil.embedding import EmbeddingService
+from src.core.yggdrasil.sandbox import SandboxManager
 from src.infra.observability import MetricsCollector
 
 logger = logging.getLogger(__name__)
 
+# Phase 1 默认领域骨架
+_DEFAULT_DOMAINS = [
+    "database/skills",
+    "database/knowledge",
+    "database/memories",
+    "http/skills",
+    "http/knowledge",
+    "http/memories",
+    "auth/skills",
+    "auth/knowledge",
+    "auth/memories",
+    "task/skills",
+    "task/knowledge",
+    "task/memories",
+    "utils/skills",
+    "utils/knowledge",
+    "utils/memories",
+]
+
 
 class YggdrasilEngine:
-    """Yggdrasil 世界树引擎 - 统一 API，整合 ChromaDB + DuckDB"""
+    """Yggdrasil 世界树引擎"""
 
     def __init__(
         self,
         store: YggdrasilStore,
         retriever: SubtreeRetriever,
         embedding: EmbeddingService,
+        sandbox: SandboxManager,
         metrics: MetricsCollector,
     ):
         self.store = store
         self.retriever = retriever
         self.embedding = embedding
+        self.sandbox = sandbox
         self.metrics = metrics
+
+    # ── Lifecycle ──
+
+    async def ensure_skeleton(self) -> None:
+        """确保基础骨架存在：根领域 + 默认领域树 + main 分支"""
+        await self.store.ensure_skeleton()
+        await self.sandbox.ensure_main_branch()
+        await self._seed_default_domains()
+        logger.info("Yggdrasil skeleton initialized")
+
+    async def _seed_default_domains(self) -> None:
+        """播种默认领域结构"""
+        for path in _DEFAULT_DOMAINS:
+            parts = path.split("/")
+            for i in range(len(parts)):
+                sub = "/".join(parts[: i + 1])
+                existing = await self.store.get_domain_by_path(sub)
+                if not existing:
+                    domain_name = parts[i]
+                    parent_path = "/".join(parts[:i]) if i > 0 else None
+                    await self.create_domain(domain_name, parent_path)
 
     # ── Retrieve ──
 
@@ -55,7 +99,7 @@ class YggdrasilEngine:
         if parent_path is None:
             root = await self.store.get_domain_by_path("")
             if not root:
-                raise RuntimeError("Root domain not found, call ensure_skeleton first")
+                raise RuntimeError("Root domain not found")
             full_path = domain_name
             depth = 1
             parent_id = root.id
@@ -96,7 +140,7 @@ class YggdrasilEngine:
             title=title,
             content=content,
         )
-        node.id = await self.store.create_node(node)
+        await self.store.create_node(node)
         await self.embedding.upsert_node(node)
         self.metrics.increment_node_created(role.value)
         return node
@@ -148,11 +192,8 @@ class YggdrasilEngine:
                 new_strength = max(0.0, min(1.0, node.strength + delta))
                 await self.store.update_node_strength(node_id, new_strength)
                 await self.store.touch_node(node_id)
-
                 await self.store.log_change(TreeLogEntry(
-                    operation="update_node",
-                    entity_type="node",
-                    entity_id=node_id,
+                    operation="update_node", entity_type="node", entity_id=node_id,
                     changes={"strength": {"old": node.strength, "new": new_strength}},
                     operator=trace_id,
                 ))
@@ -165,11 +206,8 @@ class YggdrasilEngine:
                 await self.store.update_edge_strength(edge_id, new_strength)
                 if success:
                     await self.store.activate_edge(edge_id)
-
                 await self.store.log_change(TreeLogEntry(
-                    operation="update_edge",
-                    entity_type="edge",
-                    entity_id=edge_id,
+                    operation="update_edge", entity_type="edge", entity_id=edge_id,
                     changes={"strength": {"old": edge.strength, "new": new_strength}},
                     operator=trace_id,
                 ))
@@ -186,10 +224,16 @@ class YggdrasilEngine:
         else:
             await self.add_edge(source_id, target_id, relation, strength=0.5 + step, source_origin=source_origin)
 
-    # ── Lifecycle ──
+    # ── Sandbox ──
 
-    async def ensure_skeleton(self) -> None:
-        await self.store.ensure_skeleton()
+    async def fork_sandbox(self, name: str, created_by: Optional[str] = None) -> Branch:
+        return await self.sandbox.fork(name, created_by)
+
+    async def evaluate_sandbox(self, branch_id: str, success: bool, reason: Optional[str] = None) -> dict:
+        return await self.sandbox.evaluate(branch_id, success, reason)
+
+    async def list_sandboxes(self) -> List[Branch]:
+        return await self.sandbox.list_sandboxes()
 
 
 __all__ = ["YggdrasilEngine"]

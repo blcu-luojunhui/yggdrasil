@@ -6,6 +6,7 @@ from src.core.yggdrasil import (
     YggdrasilStore,
     EmbeddingService,
     SubtreeRetriever,
+    SandboxManager,
 )
 from src.infra.database.duckdb import DuckDBPool
 from src.infra.observability import LogService, AlertService, MetricsCollector
@@ -18,31 +19,26 @@ class ServerContainer(containers.DeclarativeContainer):
 
     log_service = providers.Singleton(LogService, log_config=config.provided.log)
 
-    duckdb_pool = providers.Singleton(
-        DuckDBPool, db_path=config.provided.duckdb_path
-    )
+    duckdb_pool = providers.Singleton(DuckDBPool, db_path=config.provided.duckdb_path)
 
     alert_service = providers.Singleton(
-        AlertService,
-        alert_backend=None,
-        max_queue_size=config.provided.alert.queue_size,
+        AlertService, alert_backend=None, max_queue_size=config.provided.alert.queue_size,
     )
 
     http_client = providers.Singleton(HttpClient, timeout=10, max_connections=100)
-
     metrics_collector = providers.Singleton(MetricsCollector)
 
     # ── Yggdrasil 核心 ──
-    yggdrasil_store = providers.Singleton(
-        YggdrasilStore, db=duckdb_pool, config=config,
-    )
+    yggdrasil_store = providers.Singleton(YggdrasilStore, db=duckdb_pool, config=config)
 
-    embedding_service = providers.Singleton(
-        EmbeddingService, config=config,
-    )
+    embedding_service = providers.Singleton(EmbeddingService, config=config)
 
     subtree_retriever = providers.Singleton(
         SubtreeRetriever, store=yggdrasil_store, embedding=embedding_service, config=config,
+    )
+
+    sandbox_manager = providers.Singleton(
+        SandboxManager, store=yggdrasil_store, embedding=embedding_service,
     )
 
     yggdrasil_engine = providers.Singleton(
@@ -50,13 +46,12 @@ class ServerContainer(containers.DeclarativeContainer):
         store=yggdrasil_store,
         retriever=subtree_retriever,
         embedding=embedding_service,
+        sandbox=sandbox_manager,
         metrics=metrics_collector,
     )
 
     # ── 后台任务 ──
-    season_manager = providers.Singleton(
-        SeasonManager, store=yggdrasil_store, config=config,
-    )
+    season_manager = providers.Singleton(SeasonManager, store=yggdrasil_store, config=config)
 
     inspection_job = providers.Singleton(
         InspectionJob,

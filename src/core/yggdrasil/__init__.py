@@ -8,11 +8,15 @@ from .models import (
     Season,
     SubtreeContext,
     StrengthUpdate,
-    ChangeLogEntry,
+    TreeLogEntry,
+    Branch,
+    SeasonCycle,
+    Cooccurrence,
 )
 from .store import YggdrasilStore
 from .retriever import SubtreeRetriever
 from .embedding import EmbeddingService
+from .sandbox import SandboxManager
 
 __all__ = [
     "YggdrasilEngine",
@@ -24,8 +28,12 @@ __all__ = [
     "Season",
     "SubtreeContext",
     "StrengthUpdate",
-    "ChangeLogEntry",
+    "TreeLogEntry",
+    "Branch",
+    "SeasonCycle",
+    "Cooccurrence",
     "YggdrasilStore",
     "SubtreeRetriever",
     "EmbeddingService",
+    "SandboxManager",
 ]

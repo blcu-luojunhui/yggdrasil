@@ -20,7 +20,6 @@ class DuckDBPool:
         """初始化 DuckDB 连接"""
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self._conn = duckdb.connect(self.db_path)
-        self._conn.execute("PRAGMA journal_mode=WAL")
         logger.info(f"DuckDB connected: {self.db_path}")
 
     async def close_pools(self):

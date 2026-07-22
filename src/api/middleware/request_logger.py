@@ -2,8 +2,6 @@ import logging
 import time
 from quart import Quart, request, g
 
-from src.infra.observability import MetricsCollector
-
 logger = logging.getLogger(__name__)
 
 
@@ -16,7 +14,6 @@ class RequestLoggerMiddleware:
 
     def __init__(self, app: Quart):
         self.app = app
-        self.metrics = MetricsCollector()
         app.before_request(self.before_request)
         app.after_request(self.after_request)
 
@@ -24,7 +21,8 @@ class RequestLoggerMiddleware:
     async def before_request():
         g.request_start_time = time.time()
 
-    async def after_request(self, response):
+    @staticmethod
+    async def after_request(response):
         duration = time.time() - getattr(g, "request_start_time", time.time())
         trace_id = getattr(request, "trace_id", "-")
 

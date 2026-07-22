@@ -32,6 +32,7 @@ class EmbeddingService:
         )
         self._collection = self._client.get_or_create_collection(
             name=self.COLLECTION_NAME,
+            embedding_function=None,  # 不使用 Chroma 内置 embedding，自己调用 API
             metadata={"hnsw:space": "cosine"},
         )
         self._initialized = True
@@ -92,9 +93,12 @@ class EmbeddingService:
         return f"{node.title}\n{node.content or ''}"
 
     async def upsert_node(self, node: CognitiveNode):
+        doc = self._node_document(node)
+        embedding = await self.embed_text(doc)
         self.collection.upsert(
             ids=[node.id],
-            documents=[self._node_document(node)],
+            embeddings=[embedding.tolist()],
+            documents=[doc],
             metadatas=[self._node_metadata(node)],
         )
 
@@ -113,8 +117,10 @@ class EmbeddingService:
         n_results: int = 10,
         where: Optional[Dict] = None,
     ) -> List[tuple[CognitiveNode, float]]:
+        # 自己生成嵌入，避免 Chroma 下载 ONNX 模型
+        query_embedding = await self.embed_text(query_text)
         result = self.collection.query(
-            query_texts=[query_text],
+            query_embeddings=[query_embedding.tolist()],
             n_results=n_results,
             where=where,
             include=["metadatas", "documents", "distances"],

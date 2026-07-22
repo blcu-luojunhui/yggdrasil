@@ -45,16 +45,19 @@ class YggdrasilStore:
             logger.info("Yggdrasil root domain created")
 
     async def _create_tables(self):
+        await self.db.async_execute("CREATE SEQUENCE IF NOT EXISTS seq_domains START 1")
+        await self.db.async_execute("CREATE SEQUENCE IF NOT EXISTS seq_tree_log START 1")
+        await self.db.async_execute("CREATE SEQUENCE IF NOT EXISTS seq_season_cycle START 1")
         await self.db.async_execute("""
             CREATE TABLE IF NOT EXISTS domains (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY DEFAULT nextval('seq_domains'),
                 parent_id INTEGER,
                 domain_name VARCHAR NOT NULL,
                 full_path VARCHAR NOT NULL UNIQUE,
                 depth INTEGER NOT NULL DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (parent_id) REFERENCES domains(id) ON DELETE CASCADE
+                FOREIGN KEY (parent_id) REFERENCES domains(id)
             )
         """)
         await self.db.async_execute("""
@@ -87,13 +90,13 @@ class YggdrasilStore:
                 source_origin VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(source_id, target_id, relation),
-                FOREIGN KEY (source_id) REFERENCES cog_node(id) ON DELETE CASCADE,
-                FOREIGN KEY (target_id) REFERENCES cog_node(id) ON DELETE CASCADE
+                FOREIGN KEY (source_id) REFERENCES cog_node(id),
+                FOREIGN KEY (target_id) REFERENCES cog_node(id)
             )
         """)
         await self.db.async_execute("""
             CREATE TABLE IF NOT EXISTS tree_log (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY DEFAULT nextval('seq_tree_log'),
                 operation VARCHAR(50) NOT NULL,
                 entity_type VARCHAR(20) NOT NULL,
                 entity_id CHAR(36) NOT NULL,
@@ -104,7 +107,7 @@ class YggdrasilStore:
         """)
         await self.db.async_execute("""
             CREATE TABLE IF NOT EXISTS season_cycle (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY DEFAULT nextval('seq_season_cycle'),
                 domain_path VARCHAR(1024) DEFAULT '/',
                 current_season VARCHAR DEFAULT 'spring',
                 cycle_anchor TIMESTAMP,
