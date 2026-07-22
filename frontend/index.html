@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yggdrasil — 世界树认知引擎</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --panel: #161b22;
+  --border: #30363d;
+  --text: #c9d1d9;
+  --muted: #8b949e;
+  --accent: #58a6ff;
+  --success: #3fb950;
+  --warning: #d2991d;
+  --danger: #f85149;
+  --spring: #ff7b72;
+  --summer: #3fb950;
+  --autumn: #d2991d;
+  --winter: #79c0ff;
+  --capacity: #58a6ff;
+  --schema: #3fb950;
+  --heuristic: #d2991d;
+  --case: #bc8cff;
+  --fact: #8b949e;
+  --state: #39d2c0;
+  --radius: 8px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column;
+  overflow: hidden;
+}
+header {
+  background: var(--panel); border-bottom: 1px solid var(--border); padding: 10px 20px;
+  display: flex; align-items: center; gap: 16px; flex-shrink: 0;
+}
+header h1 { font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+header h1 span { font-size: 22px; }
+.search-bar { display: flex; gap: 8px; flex: 1; max-width: 500px; }
+.search-bar input {
+  flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 6px 12px; color: var(--text); font-size: 14px; outline: none;
+}
+.search-bar input:focus { border-color: var(--accent); }
+.btn {
+  padding: 6px 14px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel); color: var(--text); cursor: pointer; font-size: 13px;
+  transition: background .15s; white-space: nowrap;
+}
+.btn:hover { background: #21262d; }
+.btn-accent { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+.btn-accent:hover { background: #388bfd; }
+.btn-sm { padding: 3px 8px; font-size: 12px; }
+main { display: flex; flex: 1; overflow: hidden; }
+.panel {
+  background: var(--panel); border: 1px solid var(--border); overflow-y: auto;
+}
+.sidebar { width: 260px; flex-shrink: 0; padding: 12px; }
+.sidebar h3 { font-size: 13px; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; letter-spacing: .5px; }
+.domain-tree { list-style: none; }
+.domain-tree li { padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.domain-tree li:hover { background: #21262d; }
+.domain-tree li.active { background: #1f6feb33; color: var(--accent); }
+.domain-tree li .season-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.domain-tree li .count { margin-left: auto; font-size: 11px; color: var(--muted); }
+.content { flex: 1; padding: 16px; overflow-y: auto; }
+.content-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.content-header h2 { font-size: 16px; }
+.node-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.node-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px; cursor: pointer; transition: border-color .15s, transform .1s;
+}
+.node-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.node-card-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px; }
+.node-title { font-size: 14px; font-weight: 500; line-height: 1.3; }
+.node-role {
+  font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: .3px; flex-shrink: 0;
+}
+.role-capacity { background: #58a6ff22; color: var(--capacity); }
+.role-schema { background: #3fb95022; color: var(--schema); }
+.role-heuristic { background: #d2991d22; color: var(--heuristic); }
+.role-case { background: #bc8cff22; color: var(--case); }
+.role-fact { background: #8b949e22; color: var(--fact); }
+.role-state { background: #39d2c022; color: var(--state); }
+.node-meta { display: flex; gap: 12px; font-size: 12px; color: var(--muted); margin-top: 8px; }
+.meta-item { display: flex; align-items: center; gap: 4px; }
+.bar { height: 4px; background: #21262d; border-radius: 2px; margin-top: 4px; overflow: hidden; }
+.bar-inner { height: 100%; border-radius: 2px; transition: width .3s; }
+.empty-state { text-align: center; color: var(--muted); padding: 60px 20px; }
+.empty-state p { margin: 8px 0; font-size: 14px; }
+.detail-panel {
+  width: 340px; flex-shrink: 0; padding: 16px; border-left: 1px solid var(--border);
+  display: none;
+}
+.detail-panel.open { display: block; }
+.detail-panel h3 { font-size: 16px; margin-bottom: 12px; }
+.detail-panel .field { margin-bottom: 8px; }
+.detail-panel .field label { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; margin-bottom: 2px; }
+.detail-panel .field .value { font-size: 14px; }
+.detail-panel .edges { margin-top: 16px; }
+.detail-panel .edge-item { font-size: 12px; padding: 4px 0; display: flex; gap: 6px; }
+.detail-panel .close-btn { float: right; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; }
+.tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+.tab {
+  padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: transparent; color: var(--muted); cursor: pointer; font-size: 13px;
+}
+.tab.active { background: #1f6feb33; color: var(--accent); border-color: var(--accent); }
+.node-preview { font-size: 12px; color: var(--muted); max-height: 60px; overflow: hidden; line-height: 1.4; }
+.modal {
+  display: none; position: fixed; inset: 0; background: #0d1117cc; z-index: 100;
+  align-items: center; justify-content: center;
+}
+.modal.open { display: flex; }
+.modal-content {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 24px; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto;
+}
+.modal-content h3 { margin-bottom: 12px; }
+.form-group { margin-bottom: 12px; }
+.form-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.form-group input, .form-group select, .form-group textarea {
+  width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+  padding: 6px 10px; color: var(--text); font-size: 13px; outline: none;
+}
+.form-group textarea { min-height: 80px; resize: vertical; font-family: monospace; }
+.form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.connection-graph { height: 200px; background: var(--bg); border-radius: var(--radius); margin-top: 12px; overflow: hidden; }
+.retrieve-result {
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px; margin-top: 8px; max-height: 300px; overflow-y: auto;
+}
+.retrieve-result pre { font-size: 12px; white-space: pre-wrap; font-family: monospace; }
+.sandbox-list { font-size: 13px; }
+.sandbox-item {
+  padding: 8px; border: 1px solid var(--border); border-radius: var(--radius);
+  margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;
+}
+.status-active { color: var(--success); }
+.status-archived { color: var(--muted); }
+.status-isolated { color: var(--danger); }
+.toast {
+  position: fixed; bottom: 20px; right: 20px; padding: 10px 16px;
+  border-radius: var(--radius); font-size: 13px; z-index: 200;
+  animation: fadeIn .3s;
+}
+.toast-success { background: #3fb95033; border: 1px solid var(--success); color: var(--success); }
+.toast-error { background: #f8514933; border: 1px solid var(--danger); color: var(--danger); }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } }
+@media (max-width: 900px) { .detail-panel { display: none !important; } .sidebar { width: 200px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>🌳</span> Yggdrasil</h1>
+  <div class="search-bar">
+    <input type="text" id="search-input" placeholder="检索认知子树... 输入意图描述" onkeydown="if(event.key==='Enter')doRetrieve()">
+    <button class="btn btn-accent" onclick="doRetrieve()">🔍 检索</button>
+  </div>
+  <button class="btn" onclick="openModal('node-modal')">+ 节点</button>
+  <button class="btn" onclick="openModal('domain-modal')">+ 领域</button>
+  <button class="btn" onclick="openModal('sandbox-modal')">🧪 沙盒</button>
+</header>
+<main>
+  <!-- 领域树 -->
+  <aside class="panel sidebar" id="sidebar">
+    <h3>🌿 领域树</h3>
+    <ul class="domain-tree" id="domain-tree"></ul>
+    <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
+      <h3>📊 统计</h3>
+      <div style="font-size:12px; color:var(--muted);" id="stats-box">加载中...</div>
+    </div>
+  </aside>
+
+  <!-- 主内容区 -->
+  <section class="content" id="main-content">
+    <div class="content-header">
+      <h2 id="content-title">选择领域查看节点</h2>
+      <span style="font-size:12px;color:var(--muted)" id="node-count"></span>
+    </div>
+    <div id="search-result" class="retrieve-result" style="display:none;"></div>
+    <div class="node-grid" id="node-grid"></div>
+    <div class="empty-state" id="empty-state"><p>🌱</p><p>选择一个领域开始探索 Yggdrasil 世界树</p></div>
+  </section>
+
+  <!-- 节点详情面板 -->
+  <aside class="panel detail-panel" id="detail-panel">
+    <button class="close-btn" onclick="closeDetail()">&times;</button>
+    <h3 id="detail-title"></h3>
+    <div id="detail-content"></div>
+    <div class="edges" id="detail-edges"></div>
+  </aside>
+</main>
+
+<!-- 新建节点弹窗 -->
+<div class="modal" id="node-modal">
+  <div class="modal-content">
+    <h3>🌱 新建认知节点</h3>
+    <div class="form-group">
+      <label>领域路径</label>
+      <input type="text" id="node-domain" placeholder="如 /database/skills/" list="domain-list">
+      <datalist id="domain-list"></datalist>
+    </div>
+    <div class="form-group">
+      <label>角色</label>
+      <select id="node-role">
+        <option value="capacity">capacity — 可执行能力</option>
+        <option value="schema">schema — 概念框架</option>
+        <option value="heuristic">heuristic — 启发式规则</option>
+        <option value="case">case — 历史案例</option>
+        <option value="fact">fact — 客观事实</option>
+        <option value="state">state — 当前状态</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>标题</label>
+      <input type="text" id="node-title" placeholder="节点名称">
+    </div>
+    <div class="form-group">
+      <label>内容 (Markdown)</label>
+      <textarea id="node-content" placeholder="节点内容..."></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn" onclick="closeModal('node-modal')">取消</button>
+      <button class="btn btn-accent" onclick="createNode()">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- 新建领域弹窗 -->
+<div class="modal" id="domain-modal">
+  <div class="modal-content">
+    <h3>🌿 新建领域</h3>
+    <div class="form-group">
+      <label>父领域路径 (留空为顶级)</label>
+      <input type="text" id="domain-parent" placeholder="如 /database">
+    </div>
+    <div class="form-group">
+      <label>领域名称</label>
+      <input type="text" id="domain-name" placeholder="如 skills">
+    </div>
+    <div class="form-actions">
+      <button class="btn" onclick="closeModal('domain-modal')">取消</button>
+      <button class="btn btn-accent" onclick="createDomain()">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- 沙盒弹窗 -->
+<div class="modal" id="sandbox-modal">
+  <div class="modal-content" style="max-width:600px;">
+    <h3>🧪 沙盒管理</h3>
+    <div class="form-group" style="display:flex;gap:8px;">
+      <input type="text" id="sandbox-name" placeholder="沙盒名称" style="flex:1;">
+      <button class="btn btn-accent" onclick="forkSandbox()">Fork 沙盒</button>
+    </div>
+    <h4 style="margin-top:16px;font-size:13px;color:var(--muted);">活跃沙盒</h4>
+    <div class="sandbox-list" id="sandbox-list">加载中...</div>
+    <div class="form-actions">
+      <button class="btn" onclick="closeModal('sandbox-modal')">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+const API = '/api/v1/yggdrasil';
+let activeDomain = '';
+let activeNode = null;
+let allDomains = [];
+
+// ── Toast ──
+function toast(msg, type='success') {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// ── API helpers ──
+async function api(url, opts={}) {
+  try {
+    const res = await fetch(url, {
+      headers: {'Content-Type':'application/json', ...opts.headers},
+      ...opts,
+    });
+    return await res.json();
+  } catch(e) {
+    toast(`请求失败: ${e.message}`, 'error');
+    return null;
+  }
+}
+
+// ── Domain tree ──
+async function loadDomains() {
+  // Load all domains via health check and known structure
+  // In Phase 1, build tree from nodes listing
+  const data = await api(`${API}/nodes?domain_path=`);
+  // Fallback: build from known domains
+  try {
+    // Try getting root domain info
+    const r = await api(`/api/v1/health`);
+    if (r && r.status === 'ok') {
+      document.getElementById('stats-box').innerHTML = '✅ 服务正常<br>加载领域树...';
+    }
+  } catch(e) {}
+
+  // Build domain tree from hardcoded seeds + discovered nodes
+  const seeds = ['database/skills','database/knowledge','database/memories',
+                 'http/skills','http/knowledge','http/memories',
+                 'auth/skills','auth/knowledge','auth/memories',
+                 'task/skills','task/knowledge','task/memories',
+                 'utils/skills','utils/knowledge','utils/memories'];
+
+  const tree = { '': { name: 'root', children: {}, fullPath: '' } };
+  for (const s of seeds) {
+    const parts = s.split('/');
+    let current = '';
+    for (let i = 0; i < parts.length; i++) {
+      const seg = parts[i];
+      const parent = current;
+      current = current ? `${current}/${seg}` : seg;
+      if (!tree[current]) {
+        tree[current] = { name: seg, children: {}, fullPath: current, parent: parent };
+      }
+      if (parent && tree[parent] && !tree[parent].children[current]) {
+        tree[parent].children[current] = tree[current];
+      }
+    }
+  }
+
+  allDomains = Object.values(tree).filter(d => d.fullPath !== '');
+  renderDomainTree(tree[''], 0);
+  await loadStats();
+}
+
+async function loadStats() {
+  try {
+    // Try to load stats from nodes listing
+    const nodes = await api(`${API}/nodes?domain_path=`);
+    const count = nodes && nodes.data ? nodes.data.length : 0;
+    document.getElementById('stats-box').innerHTML = `
+      🏠 领域: ${allDomains.length}<br>
+      🍃 节点: 加载中...<br>
+      ⚡ 状态: 在线
+    `;
+  } catch(e) {
+    document.getElementById('stats-box').innerHTML = '⚡ 服务在线';
+  }
+}
+
+function renderDomainTree(node, level) {
+  const ul = document.getElementById('domain-tree');
+  const children = Object.values(node.children).sort((a,b) => a.name.localeCompare(b.name));
+
+  for (const child of children) {
+    const li = document.createElement('li');
+    li.style.paddingLeft = `${level * 16 + 8}px`;
+    li.onclick = (e) => { e.stopPropagation(); selectDomain(child.fullPath); };
+
+    // Season dot
+    const dot = document.createElement('span');
+    dot.className = 'season-dot';
+    dot.style.background = 'var(--spring)';
+    li.appendChild(dot);
+
+    // Name
+    const name = document.createTextNode(` ${child.name}`);
+    li.appendChild(name);
+
+    // Count placeholder
+    const cnt = document.createElement('span');
+    cnt.className = 'count';
+    cnt.textContent = '';
+    li.appendChild(cnt);
+
+    li.dataset.path = child.fullPath;
+    ul.appendChild(li);
+
+    // Recursively render grandchildren (skills/knowledge/memories)
+    const grandchildren = Object.values(child.children);
+    for (const gc of grandchildren) {
+      const gcli = document.createElement('li');
+      gcli.style.paddingLeft = `${(level+1) * 16 + 8}px`;
+      gcli.onclick = (e) => { e.stopPropagation(); selectDomain(gc.fullPath); };
+
+      const gcd = document.createElement('span');
+      gcd.className = 'season-dot';
+      gcd.style.background = gc.name === 'skills' ? 'var(--capacity)' : gc.name === 'knowledge' ? 'var(--schema)' : 'var(--case)';
+      gcli.appendChild(gcd);
+
+      const emoji = gc.name === 'skills' ? '⚡' : gc.name === 'knowledge' ? '📖' : '🧠';
+      gcli.appendChild(document.createTextNode(` ${emoji} ${gc.name}`));
+      gcli.dataset.path = gc.fullPath;
+      ul.appendChild(gcli);
+    }
+  }
+}
+
+async function selectDomain(path) {
+  activeDomain = path;
+  document.getElementById('content-title').textContent = `📂 /${path}`;
+
+  // Highlight active
+  document.querySelectorAll('.domain-tree li').forEach(el => el.classList.remove('active'));
+  const active = document.querySelector(`.domain-tree li[data-path="${path}"]`);
+  if (active) active.classList.add('active');
+
+  // Load nodes
+  const data = await api(`${API}/nodes?domain_path=${encodeURIComponent(path)}`);
+  const nodes = (data && data.data) ? data.data : [];
+  document.getElementById('node-count').textContent = `${nodes.length} 个节点`;
+
+  const grid = document.getElementById('node-grid');
+  const empty = document.getElementById('empty-state');
+
+  if (nodes.length === 0) {
+    grid.innerHTML = '';
+    empty.style.display = 'block';
+  } else {
+    empty.style.display = 'none';
+    grid.innerHTML = nodes.map(n => `
+      <div class="node-card" onclick="selectNode('${n.id}')">
+        <div class="node-card-header">
+          <div class="node-title">${esc(n.title)}</div>
+          <span class="node-role role-${n.role}">${n.role}</span>
+        </div>
+        <div class="node-meta">
+          <div class="meta-item" title="强度 (${(n.strength*100).toFixed(0)}%)">
+            💪 ${(n.strength*100).toFixed(0)}%
+            <div class="bar"><div class="bar-inner" style="width:${n.strength*100}%;background:var(--accent)"></div></div>
+          </div>
+          <div class="meta-item" title="健康度 (${(n.health*100).toFixed(0)}%)">
+            ❤️ ${(n.health*100).toFixed(0)}%
+            <div class="bar"><div class="bar-inner" style="width:${n.health*100}%;background:${n.health<0.3?'var(--danger)':'var(--success)'}"></div></div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+          🌸 ${n.season} · ${n.domain_path || path}
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+function esc(s) { return s ? s.replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
+
+// ── Node detail ──
+async function selectNode(id) {
+  const data = await api(`${API}/node/${id}`);
+  if (!data || !data.data) return;
+  const n = data.data;
+  activeNode = n;
+
+  const panel = document.getElementById('detail-panel');
+  panel.classList.add('open');
+  document.getElementById('detail-title').textContent = n.title;
+
+  document.getElementById('detail-content').innerHTML = `
+    <div class="field"><label>ID</label><div class="value" style="font-size:10px;font-family:monospace;word-break:break-all">${n.id}</div></div>
+    <div class="field"><label>角色</label><div class="value"><span class="node-role role-${n.role}">${n.role}</span></div></div>
+    <div class="field"><label>领域</label><div class="value">${n.domain_path || '-'}</div></div>
+    <div class="field"><label>季节</label><div class="value">🌸 ${n.season}</div></div>
+    <div class="field"><label>强度</label><div class="value">${(n.strength*100).toFixed(0)}%</div></div>
+    <div class="field"><label>健康度</label><div class="value" style="color:${n.health<0.3?'var(--danger)':'var(--text)'}">${(n.health*100).toFixed(0)}%</div></div>
+    <div class="field"><label>租户</label><div class="value">${n.tenant_id || 'default'}</div></div>
+    ${n.content ? `<div class="field"><label>内容</label><div style="background:var(--bg);padding:8px;border-radius:4px;font-size:12px;font-family:monospace;white-space:pre-wrap;">${esc(n.content)}</div></div>` : ''}
+    ${n.last_accessed_at ? `<div class="field"><label>最后访问</label><div class="value" style="font-size:12px;">${n.last_accessed_at}</div></div>` : ''}
+    ${n.created_at ? `<div class="field"><label>创建时间</label><div class="value" style="font-size:12px;">${n.created_at}</div></div>` : ''}
+  `;
+
+  // Edge list
+  document.getElementById('detail-edges').innerHTML = '<h4 style="font-size:12px;color:var(--muted);margin-bottom:8px;">🔗 出边</h4><div style="font-size:12px;color:var(--muted);">加载中...</div>';
+}
+
+function closeDetail() {
+  document.getElementById('detail-panel').classList.remove('open');
+  activeNode = null;
+}
+
+// ── Search / Retrieve ──
+async function doRetrieve() {
+  const query = document.getElementById('search-input').value.trim();
+  if (!query) return;
+
+  const resultBox = document.getElementById('search-result');
+  resultBox.style.display = 'block';
+  resultBox.innerHTML = '<div style="color:var(--muted);">🔍 检索中...</div>';
+
+  const body = { query, max_nodes: 20 };
+  if (activeDomain) body.domain_path = activeDomain;
+
+  const data = await api(`${API}/retrieve`, { method: 'POST', body: JSON.stringify(body) });
+  if (!data || !data.data) {
+    resultBox.innerHTML = '<div style="color:var(--danger);">检索失败</div>';
+    return;
+  }
+
+  const ctx = data.data;
+  const nodes = ctx.nodes || [];
+  const edges = ctx.edges || [];
+  const markdown = ctx.markdown || '';
+
+  resultBox.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <span style="font-size:13px;">🔍 找到 <b>${nodes.length}</b> 个相关节点, <b>${edges.length}</b> 条边, ~${ctx.total_tokens} tokens</span>
+      <button class="btn btn-sm" onclick="toggleMarkdown()">📝 Markdown</button>
+    </div>
+    ${nodes.length > 0 ? `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">${nodes.map(n => `<span class="node-role role-${n.role}" style="margin-right:4px;">${n.role}</span> <b>${esc(n.title)}</b> (💪${(n.strength*100).toFixed(0)}%)`).join(' · ')}</div>` : ''}
+    <div id="markdown-preview" style="display:none;"><pre>${esc(markdown)}</pre></div>
+  `;
+}
+
+function toggleMarkdown() {
+  const el = document.getElementById('markdown-preview');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+// ── Create Node ──
+async function createNode() {
+  const body = {
+    domain_path: document.getElementById('node-domain').value.trim(),
+    role: document.getElementById('node-role').value,
+    title: document.getElementById('node-title').value.trim(),
+    content: document.getElementById('node-content').value.trim(),
+  };
+  if (!body.domain_path || !body.title) { toast('请填写领域路径和标题', 'error'); return; }
+
+  const data = await api(`${API}/node`, { method: 'POST', body: JSON.stringify(body) });
+  if (data && data.code === 0) {
+    toast('✅ 节点创建成功');
+    closeModal('node-modal');
+    if (activeDomain) selectDomain(activeDomain);
+  } else {
+    toast(`创建失败: ${data?.message || '未知错误'}`, 'error');
+  }
+}
+
+// ── Create Domain ──
+async function createDomain() {
+  const body = {
+    domain_name: document.getElementById('domain-name').value.trim(),
+    parent_path: document.getElementById('domain-parent').value.trim() || null,
+  };
+  if (!body.domain_name) { toast('请填写领域名称', 'error'); return; }
+
+  const data = await api(`${API}/domain`, { method: 'POST', body: JSON.stringify(body) });
+  if (data && data.code === 0) {
+    toast('✅ 领域创建成功');
+    closeModal('domain-modal');
+    location.reload();
+  } else {
+    toast(`创建失败: ${data?.message || '未知错误'}`, 'error');
+  }
+}
+
+// ── Sandbox ──
+async function forkSandbox() {
+  const name = document.getElementById('sandbox-name').value.trim();
+  if (!name) { toast('请填写沙盒名称', 'error'); return; }
+  const data = await api(`${API}/sandbox/fork`, { method: 'POST', body: JSON.stringify({name}) });
+  if (data && data.code === 0) {
+    toast('🧪 沙盒创建成功');
+    loadSandboxes();
+  } else {
+    toast(`创建失败: ${data?.message || '未知错误'}`, 'error');
+  }
+}
+
+async function loadSandboxes() {
+  const data = await api(`${API}/sandbox/list`);
+  const list = (data && data.data) ? data.data : [];
+  const html = list.length === 0
+    ? '<div style="color:var(--muted);font-size:13px;">暂无沙盒</div>'
+    : list.map(b => `
+      <div class="sandbox-item">
+        <div>
+          <div><b>${esc(b.name)}</b></div>
+          <div class="status-${b.status}" style="font-size:11px;">${b.status}</div>
+        </div>
+        <div style="display:flex;gap:4px;">
+          ${b.status === 'active' ? `<button class="btn btn-sm" onclick="evalSandbox('${b.id}',true)">✅</button><button class="btn btn-sm" onclick="evalSandbox('${b.id}',false)">❌</button>` : ''}
+        </div>
+      </div>
+    `).join('');
+  document.getElementById('sandbox-list').innerHTML = html;
+}
+
+async function evalSandbox(id, success) {
+  const data = await api(`${API}/sandbox/evaluate/${id}`, {
+    method: 'POST',
+    body: JSON.stringify({success, reason: success ? 'manual merge' : 'manual discard'}),
+  });
+  if (data && data.code === 0) {
+    toast(success ? '✅ 沙盒已合并' : '🗑️ 沙盒已丢弃');
+    loadSandboxes();
+  }
+}
+
+// ── Modal ──
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+  if (id === 'sandbox-modal') loadSandboxes();
+  if (id === 'node-modal') {
+    // Pre-fill domain from active selection
+    if (activeDomain) document.getElementById('node-domain').value = activeDomain;
+    // Update domain datalist
+    const dl = document.getElementById('domain-list');
+    dl.innerHTML = allDomains.map(d => `<option value="${d.fullPath}">`).join('');
+  }
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+document.querySelectorAll('.modal').forEach(m => {
+  m.addEventListener('click', (e) => {
+    if (e.target === m) closeModal(m.id);
+  });
+});
+
+// ── Init ──
+loadDomains();
+</script>
+</body>
+</html>
