@@ -64,8 +64,8 @@ class CognitiveNode(BaseModel):
 class CognitiveEdge(BaseModel):
     """认知有向边"""
     id: Optional[int] = None
-    from_node_id: int
-    to_node_id: int
+    from_node_id: str
+    to_node_id: str
     relation_type: RelationType
     strength: float = Field(default=0.5, ge=0.0, le=1.0, description="边强度 [0,1]")
     source: Optional[str] = None  # 强度来源: execution/reflection/inspection

@@ -19,4 +19,7 @@ COPY . .
 
 EXPOSE 6061
 
+# 创建数据目录
+RUN mkdir -p data/chroma
+
 CMD ["hypercorn", "app:app", "--config", "config.toml"]

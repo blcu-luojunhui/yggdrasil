@@ -12,14 +12,13 @@ from src.api.middleware import (
 )
 from src.infra.observability import TraceIdFilter
 
-# 配置日志格式，包含 trace_id
+# 配置日志格式
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] [%(trace_id)s] [%(levelname)s] %(name)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-# 为所有 logger 添加 TraceIdFilter
 trace_filter = TraceIdFilter()
 for handler in logging.root.handlers:
     handler.addFilter(trace_filter)
@@ -27,9 +26,9 @@ for handler in logging.root.handlers:
 app = Quart(__name__)
 app = cors(app, allow_origin="*")
 app.config["ACCEPTING_REQUESTS"] = True
-app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024  # 1MB
+app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
 
-# 注册中间件（顺序很重要）
+# 注册中间件
 TraceMiddleware(app)
 ErrorHandlerMiddleware(app)
 RequestLoggerMiddleware(app)
@@ -39,15 +38,10 @@ ctx = AppContext(server_container)
 
 config = server_container.config()
 log_service = server_container.log_service()
-async_mysql_pool = server_container.async_mysql_pool()
+duckdb_pool = server_container.duckdb_pool()
 yggdrasil_engine = server_container.yggdrasil_engine()
 
-routes = api_routes(
-    config,
-    log_service,
-    async_mysql_pool,
-    yggdrasil_engine,
-)
+routes = api_routes(config, log_service, duckdb_pool, yggdrasil_engine)
 app.register_blueprint(routes)
 
 

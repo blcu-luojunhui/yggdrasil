@@ -6,6 +6,9 @@ from .models import (
     CognitiveRole,
     RelationType,
     Season,
+    SubtreeContext,
+    StrengthUpdate,
+    ChangeLogEntry,
 )
 from .store import YggdrasilStore
 from .retriever import SubtreeRetriever
@@ -19,6 +22,9 @@ __all__ = [
     "CognitiveRole",
     "RelationType",
     "Season",
+    "SubtreeContext",
+    "StrengthUpdate",
+    "ChangeLogEntry",
     "YggdrasilStore",
     "SubtreeRetriever",
     "EmbeddingService",

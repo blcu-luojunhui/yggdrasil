@@ -34,13 +34,7 @@ ENV/
 .DS_Store
 .claude
 .logs/
-tests/
-examples/
-scripts/
-package-lock.json
+data/*.duckdb
+data/chroma/
 node_modudles/
-docs/design
-nginx/
-docs/deploy.md
-data/
-CLAUDE.md
+package-lock.json

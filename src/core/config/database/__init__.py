@@ -1,3 +1,3 @@
-from .mysql_config import MySQLConfig
+from .duckdb_config import DuckDBConfig
 
-__all__ = ["MySQLConfig"]
+__all__ = ["DuckDBConfig"]
