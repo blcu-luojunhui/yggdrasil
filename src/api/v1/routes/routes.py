@@ -7,8 +7,8 @@ from src.infra.observability import LogService
 
 from src.api.v1.endpoints.health import health_bp
 from src.api.v1.endpoints.metrics import metrics_bp
-from src.api.v1.endpoints.yggdrasil import yggdrasil_bp
-from src.api.v1.endpoints.sandbox import sandbox_bp
+from src.api.v1.endpoints.yggdrasil import yggdrasil_bp, set_engine
+from src.api.v1.endpoints.sandbox import sandbox_bp, set_sandbox_engine
 
 
 def api_routes(
@@ -17,6 +17,10 @@ def api_routes(
     duckdb_pool: DuckDBPool,
     yggdrasil_engine: YggdrasilEngine,
 ) -> Blueprint:
+    # 注入引擎依赖到各个 blueprint 的模块级变量
+    set_engine(yggdrasil_engine)
+    set_sandbox_engine(yggdrasil_engine)
+
     root = Blueprint("api", __name__)
     root.register_blueprint(health_bp)
     root.register_blueprint(metrics_bp)
