@@ -17,7 +17,7 @@ def api_routes(
     duckdb_pool: DuckDBPool,
     yggdrasil_engine: YggdrasilEngine,
 ) -> Blueprint:
-    root = Blueprint("api", __name__, url_prefix="/api")
+    root = Blueprint("api", __name__)
     root.register_blueprint(health_bp)
     root.register_blueprint(metrics_bp)
     root.register_blueprint(yggdrasil_bp)
