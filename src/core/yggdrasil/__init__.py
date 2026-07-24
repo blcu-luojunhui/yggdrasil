@@ -18,6 +18,15 @@ from .retriever import SubtreeRetriever
 from .embedding import EmbeddingService
 from .sandbox import SandboxManager
 
+# New domain model modules (D1+)
+from . import cognitive
+from . import soil
+from . import runtime
+from . import forest
+from . import evaluation
+from . import ports
+from . import policies
+
 __all__ = [
     "YggdrasilEngine",
     "CognitiveNode",
@@ -36,4 +45,11 @@ __all__ = [
     "SubtreeRetriever",
     "EmbeddingService",
     "SandboxManager",
+    "cognitive",
+    "soil",
+    "runtime",
+    "forest",
+    "evaluation",
+    "ports",
+    "policies",
 ]

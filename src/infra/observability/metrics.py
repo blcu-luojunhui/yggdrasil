@@ -78,6 +78,40 @@ class MetricsCollector:
             registry=self.registry
         )
 
+        # ── D4+ 新增指标 ──
+        self.soil_events_total = Counter(
+            "ygg_soil_events_total", "Total soil events", ["event_type", "status"],
+            registry=self.registry
+        )
+        self.retrieval_by_ring = Counter(
+            "ygg_retrieval_total", "Retrievals by ring", ["tree_id", "ring_id", "status"],
+            registry=self.registry
+        )
+        self.retrieval_latency = Histogram(
+            "ygg_retrieval_latency_seconds", "Retrieval latency in seconds",
+            registry=self.registry
+        )
+        self.run_total = Counter(
+            "ygg_run_total", "Total agent runs", ["status"],
+            registry=self.registry
+        )
+        self.outbox_pending = Gauge(
+            "ygg_outbox_pending", "Number of pending outbox items",
+            registry=self.registry
+        )
+        self.ring_activation_total = Counter(
+            "ygg_ring_activation_total", "Ring activations", ["result"],
+            registry=self.registry
+        )
+        self.ring_rollback_total = Counter(
+            "ygg_ring_rollback_total", "Ring rollbacks",
+            registry=self.registry
+        )
+        self.release_gate_failed_total = Counter(
+            "ygg_release_gate_failed_total", "Release gate failures", ["reason"],
+            registry=self.registry
+        )
+
     def increment_request(self, endpoint: str, method: str):
         self.request_count.labels(endpoint=endpoint, method=method).inc()
 
@@ -119,6 +153,30 @@ class MetricsCollector:
 
     def set_edge_count(self, relation_type: str, count: int):
         self.edge_total.labels(relation_type=relation_type).set(count)
+
+    def increment_soil_event(self, event_type: str, status: str = "appended"):
+        self.soil_events_total.labels(event_type=event_type, status=status).inc()
+
+    def increment_retrieval_by_ring(self, tree_id: str = "", ring_id: str = "", status: str = "ok"):
+        self.retrieval_by_ring.labels(tree_id=tree_id, ring_id=ring_id, status=status).inc()
+
+    def observe_retrieval_latency(self, seconds: float):
+        self.retrieval_latency.observe(seconds)
+
+    def increment_run(self, status: str):
+        self.run_total.labels(status=status).inc()
+
+    def set_outbox_pending(self, count: int):
+        self.outbox_pending.set(count)
+
+    def increment_ring_activation(self, result: str = "success"):
+        self.ring_activation_total.labels(result=result).inc()
+
+    def increment_ring_rollback(self):
+        self.ring_rollback_total.inc()
+
+    def increment_release_gate_failed(self, reason: str = "unknown"):
+        self.release_gate_failed_total.labels(reason=reason).inc()
 
 
 __all__ = ["MetricsCollector"]

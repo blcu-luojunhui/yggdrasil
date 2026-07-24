@@ -1,0 +1,4 @@
+interface:
+  display_name: "Yggdrasil Agent"
+  short_description: "让 Claude 的每次任务进入 Yggdrasil 认知闭环"
+  default_prompt: "Use $yggdrasil-agent to run this task through the Yggdrasil cognitive loop."

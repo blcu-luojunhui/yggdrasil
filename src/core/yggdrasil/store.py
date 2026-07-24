@@ -1,28 +1,26 @@
 import json
 import logging
 import uuid
-import time
-from typing import List, Optional, Dict, Set
-from datetime import datetime
+from typing import Dict, List, Optional, Set
 
 from src.core.config import YggdrasilConfig
 from src.core.yggdrasil.models import (
-    Domain,
-    CognitiveNode,
     CognitiveEdge,
+    CognitiveNode,
     CognitiveRole,
+    Domain,
     RelationType,
     Season,
     TreeLogEntry,
 )
 from src.infra.database.duckdb import DuckDBPool
+from src.infra.database.duckdb.schema import CREATE_TABLES_DDL
 
 logger = logging.getLogger(__name__)
 
 
 def _uuid_v7() -> str:
     """生成 UUID v7（时间有序）"""
-    ts = int(time.time() * 1000)
     u = uuid.uuid4()
     return f"{u.hex[:8]}-{u.hex[8:12]}-7{u.hex[13:16]}-{u.hex[16:20]}-{u.hex[20:]}"
 
@@ -136,7 +134,9 @@ class YggdrasilStore:
                 PRIMARY KEY (node_a_id, node_b_id)
             )
         """)
-        logger.info("Yggdrasil tables created")
+        # 执行新 schema DDL（幂等）
+        await self.db.execute_script(CREATE_TABLES_DDL)
+        logger.info("Yggdrasil tables created (legacy + versioned)")
 
     # ── Domain operations ──
 

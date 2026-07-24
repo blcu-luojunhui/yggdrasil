@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 from typing import List, Optional, Dict
@@ -52,8 +53,26 @@ class EmbeddingService:
 
     async def embed_texts(self, texts: List[str]) -> List[np.ndarray]:
         if self.config.llm_api_key:
-            return await self._call_openai_embedding(texts)
-        return [np.random.randn(self.config.llm_embedding_dim).astype(np.float32) for _ in texts]
+            try:
+                return await self._call_openai_embedding(texts)
+            except Exception:
+                if not self.config.embedding_deterministic_fallback:
+                    raise
+                logger.warning(
+                    "Remote embedding failed; using deterministic local fallback",
+                    exc_info=True,
+                )
+        return [self._deterministic_embedding(t, self.config.llm_embedding_dim) for t in texts]
+
+    @staticmethod
+    def _deterministic_embedding(text: str, dim: int = 1536) -> np.ndarray:
+        """无 API Key 时用 SHA-256 派生 seed 的确定性向量，同一输入输出相同并归一化"""
+        h = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        seed = int(h[:16], 16)
+        rng = np.random.default_rng(seed)
+        vec = rng.standard_normal(dim).astype(np.float32)
+        norm = np.linalg.norm(vec)
+        return vec / norm if norm > 0 else vec
 
     async def _call_openai_embedding(self, texts: List[str]) -> List[np.ndarray]:
         import aiohttp
@@ -63,7 +82,8 @@ class EmbeddingService:
             "Content-Type": "application/json",
         }
         payload = {"model": self.config.llm_model, "input": texts}
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=5.0)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(url, json=payload, headers=headers) as resp:
                 result = await resp.json()
                 if "data" not in result:
@@ -117,6 +137,8 @@ class EmbeddingService:
         n_results: int = 10,
         where: Optional[Dict] = None,
     ) -> List[tuple[CognitiveNode, float]]:
+        if self.collection.count() == 0:
+            return []
         # 自己生成嵌入，避免 Chroma 下载 ONNX 模型
         query_embedding = await self.embed_text(query_text)
         result = self.collection.query(

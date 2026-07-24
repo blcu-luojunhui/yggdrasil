@@ -29,7 +29,7 @@ app = cors(app, allow_origin="*")
 app.config["ACCEPTING_REQUESTS"] = True
 app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
 
-_FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend")
+_FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend", "dist")
 
 # 注册中间件
 TraceMiddleware(app)
@@ -37,6 +37,16 @@ ErrorHandlerMiddleware(app)
 RequestLoggerMiddleware(app)
 
 server_container = ServerContainer()
+
+# 接线 dependency_injector → 各 endpoint 模块
+server_container.wire(modules=[
+    "src.api.v1.endpoints.trees",
+    "src.api.v1.endpoints.rings",
+    "src.api.v1.endpoints.soil",
+    "src.api.v1.endpoints.runs",
+    "src.api.v1.endpoints.observe",
+])
+
 ctx = AppContext(server_container)
 
 config = server_container.config()

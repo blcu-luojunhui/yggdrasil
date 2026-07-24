@@ -32,9 +32,15 @@ ENV/
 *.swo
 *~
 .DS_Store
-.claude
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/yggdrasil-agent/
+!.claude/skills/yggdrasil-agent/**
 .logs/
 data/*.duckdb
 data/chroma/
 node_modudles/
 package-lock.json
+frontend/
+tests/

@@ -3,7 +3,6 @@ from typing import List, Optional, Set, Tuple, Dict
 
 from src.core.config import YggdrasilConfig
 from src.core.yggdrasil.models import (
-    Domain,
     CognitiveNode,
     CognitiveEdge,
     SubtreeContext,

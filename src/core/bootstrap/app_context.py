@@ -43,6 +43,10 @@ class AppContext:
             embedding_service = self.container.embedding_service()
             await embedding_service.initialize()
             logger.info("Yggdrasil: ChromaDB initialized")
+
+            yggdrasil_engine = self.container.yggdrasil_engine()
+            await yggdrasil_engine.ensure_skeleton()
+            logger.info("Yggdrasil: engine skeleton ensured (domains + Ring 0)")
         except Exception:
             logger.warning("Yggdrasil initialization failed", exc_info=True)
 
@@ -54,31 +58,68 @@ class AppContext:
         except Exception:
             logger.warning("Inspection job start failed", exc_info=True)
 
+        config = self.container.config()
+
+        logger.info("=== Phase 7: Starting outbox job ===")
+        try:
+            if config.outbox_worker_enabled:
+                outbox_job = self.container.outbox_job()
+                await outbox_job.start()
+                logger.info("Outbox job started")
+            else:
+                logger.info("Outbox job disabled")
+        except Exception:
+            logger.warning("Outbox job start failed", exc_info=True)
+
+        logger.info("=== Phase 8: Starting evaluation job ===")
+        try:
+            evaluation_job = self.container.evaluation_job()
+            await evaluation_job.start()
+            logger.info("Evaluation job started")
+        except Exception:
+            logger.warning("Evaluation job start failed", exc_info=True)
+
         logger.info("=== Application startup complete ===")
 
     async def shutdown(self):
         """关闭所有资源（优雅关闭）"""
-        logger.info("=== Phase 1: Stopping inspection job ===")
+        logger.info("=== Phase 1: Stopping evaluation job ===")
+        try:
+            evaluation_job = self.container.evaluation_job()
+            await evaluation_job.stop(timeout=10.0)
+            logger.info("Evaluation job stopped")
+        except Exception:
+            logger.warning("Evaluation job stop failed", exc_info=True)
+
+        logger.info("=== Phase 2: Stopping outbox job ===")
+        try:
+            outbox_job = self.container.outbox_job()
+            await outbox_job.stop(timeout=10.0)
+            logger.info("Outbox job stopped")
+        except Exception:
+            logger.warning("Outbox job stop failed", exc_info=True)
+
+        logger.info("=== Phase 3: Stopping inspection job ===")
         inspection_job = self.container.inspection_job()
         await inspection_job.stop(timeout=30.0)
         logger.info("Inspection job stopped")
 
-        logger.info("=== Phase 2: Stopping alert service ===")
+        logger.info("=== Phase 4: Stopping alert service ===")
         alert_service = self.container.alert_service()
         await alert_service.stop(drain_timeout=5.0)
         logger.info("Alert service stopped")
 
-        logger.info("=== Phase 3: Stopping log service ===")
+        logger.info("=== Phase 5: Stopping log service ===")
         log_service = self.container.log_service()
         await log_service.stop(drain_timeout=10.0)
         logger.info("Log service stopped")
 
-        logger.info("=== Phase 4: Closing DuckDB ===")
+        logger.info("=== Phase 6: Closing DuckDB ===")
         pool = self.container.duckdb_pool()
         await pool.close_pools()
         logger.info("DuckDB closed")
 
-        logger.info("=== Phase 5: Closing HTTP client ===")
+        logger.info("=== Phase 7: Closing HTTP client ===")
         http_client = self.container.http_client()
         await http_client.close()
         logger.info("HTTP client closed")

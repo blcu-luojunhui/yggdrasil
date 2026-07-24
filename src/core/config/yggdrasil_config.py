@@ -1,7 +1,6 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .database.duckdb_config import DuckDBConfig
 from .observability.log_config import LogConfig
 from .observability.alert_config import AlertConfig
 
@@ -30,6 +29,7 @@ class YggdrasilConfig(BaseSettings):
     llm_api_key: str = Field(default="", description="API Key")
     llm_model: str = Field(default="text-embedding-3-small", description="嵌入模型")
     llm_embedding_dim: int = Field(default=1536, description="嵌入维度")
+    embedding_deterministic_fallback: bool = Field(default=True, description="无 API Key 时使用确定性 embedding")
 
     # 检索
     retrieval_max_nodes: int = Field(default=50, description="检索返回最大节点数")
@@ -43,6 +43,13 @@ class YggdrasilConfig(BaseSettings):
 
     # 巡检
     inspection_cron: str = Field(default="0 0 * * *", description="巡检 cron 表达式")
+
+    # 功能开关
+    versioned_read_enabled: bool = Field(default=True, description="启用版本化读取")
+    soil_write_enabled: bool = Field(default=True, description="启用 Soil 写入")
+    run_trace_enabled: bool = Field(default=True, description="启用 Run 追踪")
+    candidate_publish_enabled: bool = Field(default=True, description="启用 Candidate 发布")
+    outbox_worker_enabled: bool = Field(default=True, description="启用 Outbox 消费")
 
     model_config = SettingsConfigDict(
         env_prefix="YGGDRASIL_",

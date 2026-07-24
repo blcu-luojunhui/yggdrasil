@@ -9,6 +9,11 @@ from src.api.v1.endpoints.health import health_bp
 from src.api.v1.endpoints.metrics import metrics_bp
 from src.api.v1.endpoints.yggdrasil import yggdrasil_bp, set_engine
 from src.api.v1.endpoints.sandbox import sandbox_bp, set_sandbox_engine
+from src.api.v1.endpoints.trees import trees_bp
+from src.api.v1.endpoints.rings import rings_bp
+from src.api.v1.endpoints.soil import soil_bp
+from src.api.v1.endpoints.runs import runs_bp
+from src.api.v1.endpoints.observe import observe_bp
 
 
 def api_routes(
@@ -26,6 +31,12 @@ def api_routes(
     root.register_blueprint(metrics_bp)
     root.register_blueprint(yggdrasil_bp)
     root.register_blueprint(sandbox_bp)
+    # 版本化 API
+    root.register_blueprint(trees_bp)
+    root.register_blueprint(rings_bp)
+    root.register_blueprint(soil_bp)
+    root.register_blueprint(runs_bp)
+    root.register_blueprint(observe_bp)
     return root
 
 
